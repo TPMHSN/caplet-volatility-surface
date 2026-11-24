@@ -4,11 +4,11 @@
 
 **[▶ Explorer les surfaces en 3D](https://tpmhsn.github.io/caplet-volatility-surface/)**
 
-Sélectionne Euribor 3M ou 6M, puis glisse sur le graphique pour le tourner. Le rejeu est accessible directement dans le navigateur.
+Sélectionne Euribor 3M ou 6M, puis glisse sur le graphique pour le tourner. Retrouve aussi les trois graphiques dans la [galerie des visuels](visuels/).
 
 Une cotation de cap donne une volatilité pour un contrat qui contient plusieurs coupons. Pour valoriser un contrat à dates ou strikes différents, il faut retrouver la volatilité de chaque coupon. Ce projet part d’un classeur de marché et reconstruit les courbes, les forwards et la surface de volatilité que le pricer utilise ensuite coupon par coupon.
 
-![Deux cartes de volatilité normale des caplets Euribor 3M et 6M, selon le début du coupon et le strike](docs/images/surfaces-30-ans.png)
+![Deux cartes de volatilité normale des caplets Euribor 3M et 6M, selon le début du coupon et le strike](visuels/surfaces-30-ans.png)
 
 *Rejeu historique du 20 novembre 2026. Volatilités normales en points de base.*
 
@@ -21,7 +21,7 @@ Les surfaces du rejeu sont évaluées sur 14 strikes de −1,5 % à 5 %. Le mote
 | Euribor 3M | 119 | 1 666 | 24 novembre 2056 |
 | Euribor 6M | 59 | 826 | 24 novembre 2056 |
 
-![Forwards des deux indices et smile de volatilité pour un début de coupon à dix ans](docs/images/forwards-et-smile.png)
+![Forwards des deux indices et smile de volatilité pour un début de coupon à dix ans](visuels/forwards-et-smile.png)
 
 ## Du classeur au prix
 
@@ -53,7 +53,7 @@ Le calcul prend plusieurs minutes. Dans `resultats/`, `rapport.html` permet d’
 
 Ajouter `--pricing examples/pricing.json` à la commande pour rejouer trois contrats à 30 ans. Les exemples utilisent un notionnel de 10 M€ et un strike de 3 %. Le fichier généré `pricing.json` donne le détail des valeurs actuelles et des fixings coupon par coupon.
 
-![Primes Bachelier d’un cap et d’un floor 3M et d’un cap 6M dans l’exemple à 30 ans](docs/images/pricing-30-ans.png)
+![Primes Bachelier d’un cap et d’un floor 3M et d’un cap 6M dans l’exemple à 30 ans](visuels/pricing-30-ans.png)
 
 Dans ce rejeu, les coupons fixés le jour de marché ont utilisé leur fixing observé et le cap et le floor 3M ont satisfait la parité. Le contrôle de repricing du moteur signale des écarts hors tolérance sur certains floors natifs 3M. Le prolongement reste une hypothèse de modélisation expérimentale.
 

@@ -7,7 +7,7 @@ from tempfile import mkdtemp
 
 
 ROOT = Path(__file__).resolve().parent
-VIEWER_TEMPLATE = ROOT / "visuels" / "rapport.html"
+VIEWER_TEMPLATE = ROOT / "templates" / "rapport.html"
 PLOTLY_JS = ROOT / "docs" / "vendor" / "plotly.min.js"
 
 

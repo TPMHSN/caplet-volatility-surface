@@ -4,7 +4,7 @@ Les figures du README proviennent du rejeu du 20 novembre 2026. Pour les recrée
 
 ```sh
 python -m pip install -r requirements-dev.txt
-python tools/generer_figures.py CHEMIN_DU_RAPPORT docs/images
+python tools/generer_figures.py CHEMIN_DU_RAPPORT visuels
 python -m pytest -q
 ```
 
