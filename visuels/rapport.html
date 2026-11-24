@@ -7,6 +7,7 @@
 <style>
   :root { color-scheme: light; --ink: #142739; --muted: #4b6074; --line: #d5e0e9; --brand: #096b62; }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; color: var(--ink); background: #f1f6f8; font: 15px/1.5 system-ui, sans-serif; }
   main { max-width: 1480px; padding: 38px clamp(18px, 4vw, 64px); margin: auto; }
   h1, h2 { line-height: 1.2; letter-spacing: -.025em; margin: 0; }
@@ -18,6 +19,11 @@
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 24px 0 16px; }
   .tabs, .downloads { display: flex; gap: 8px; flex-wrap: wrap; }
   .downloads { gap: 16px; }
+  .motion { margin-top: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; }
+  .motion p { color: var(--muted); font-size: .88rem; }
+  .camera-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+  .camera-controls button { padding: 4px 9px; font-size: .84rem; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
   button, select { border: 1px solid var(--line); background: white; color: var(--ink); border-radius: 8px; font: inherit; }
   button { cursor: pointer; padding: 8px 14px; font-weight: 650; }
   button[aria-pressed="true"] { color: white; background: var(--brand); border-color: var(--brand); }
@@ -41,7 +47,7 @@
   @media (max-width: 980px) { .grid { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 490px) { .card, details { padding: 13px; } #surface { height: 360px; } }
 </style>
-<script>__PLOTLY__</script>
+__PLOTLY_SCRIPT__
 </head>
 <body>
 <main>
@@ -54,21 +60,33 @@
       <button type="button" data-tenor="3M" aria-pressed="true">Euribor 3M</button>
       <button type="button" data-tenor="6M" aria-pressed="false">Euribor 6M</button>
     </div>
-    <nav class="downloads" aria-label="Fichiers du calcul">
+    <nav id="downloads" class="downloads" aria-label="Fichiers du calcul">
       <a id="csv" href="surface-3M.csv" download>CSV 3M</a>
       <a href="surfaces.json" download>Données JSON</a>
       <a href="calibration.json" download>Calibration</a>
     </nav>
+    <nav id="repo-links" class="downloads" aria-label="Projet" hidden>
+      <a href="https://github.com/TPMHSN/caplet-volatility-surface">Dépôt GitHub</a>
+      <a href="https://github.com/TPMHSN/caplet-volatility-surface/blob/main/docs/du-classeur-au-prix.md">Méthode</a>
+    </nav>
   </div>
+  <noscript>Active JavaScript pour explorer la surface.</noscript>
   <div class="grid">
     <section class="card">
       <h2 id="surface-title">Volatilité normale</h2>
       <p class="metric" id="availability" role="status"></p>
+      <div class="motion">
+        <p id="gesture">Glisse pour tourner. Molette ou pincement pour zoomer.</p>
+        <div class="camera-controls" id="camera-controls">
+          <button type="button" id="rotate-view">Tourner</button>
+          <button type="button" id="reset-view">Réinitialiser</button>
+        </div>
+      </div>
       <div id="surface" aria-label="Surface de volatilité en trois dimensions"></div>
     </section>
     <section class="card smile-card">
       <h2>Smile par fixing</h2>
-      <label for="fixing">Date du coupon</label>
+      <label for="fixing">Fixing du coupon</label>
       <select id="fixing"></select>
       <p id="coupon"></p>
       <div id="smile" aria-label="Courbe de volatilité selon le strike"></div>
@@ -81,7 +99,7 @@
       <p id="slice-errors" hidden></p>
     </section>
   </div>
-  <section class="rates card">
+  <section id="observed-rates" class="rates card">
     <h2>Fixings observés</h2>
     <table><thead><tr><th>Indice</th><th>Taux</th><th>Historique chargé jusqu’au</th></tr></thead>
       <tbody id="rates"></tbody></table>
@@ -95,121 +113,201 @@
   <details>
     <summary>Calibration et couverture</summary>
     <p id="validation"></p>
+    <p id="approximation" hidden>Les vols de cet aperçu sont arrondies à 0,1 bp.</p>
     <p>Prolongement expérimental du moteur V3 + candidat 3M. Les cellules indisponibles restent vides.</p>
     <ul id="issues" hidden></ul>
   </details>
 </main>
 <script id="data" type="application/json">__RESULTATS__</script>
 <script>
-const {meta, strikes, series, prices} = JSON.parse(document.getElementById("data").textContent);
-const byId = id => document.getElementById(id);
-const fmt = new Intl.NumberFormat("fr-FR", {maximumFractionDigits: 3});
-const cash = new Intl.NumberFormat("fr-FR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
-const val = (number, suffix = "") => number == null ? "—" : fmt.format(number) + suffix;
-const calendarDate = iso => iso ? iso.split("-").reverse().join("/") : "—";
-const labels = {
-  native: "Natif",
-  early_flat_normal: "Prolongement court",
-  long_3m_from_6m: "Transfert 6M → 3M",
-  terminal_flat_normal: "Prolongement terminal"
-};
-const config = {responsive: true, displaylogo: false, scrollZoom: false};
-const chartFont = {family: "system-ui, sans-serif", color: "#30485e"};
-const narrow = window.matchMedia("(max-width: 520px)");
-
-function surfaceScene() {
-  const small = narrow.matches;
-  return {
-    xaxis: {title: {text: "Strike (%)"}},
-    yaxis: {title: {text: small ? "Début (ans)" : "Début depuis spot (ans)"}, range: [0, 30]},
-    zaxis: {title: {text: small ? "Vol (bp)" : "Vol normale (bp)"}},
-    camera: {eye: small ? {x: 2.1, y: -2.22, z: 1.12} : {x: 1.55, y: -1.65, z: 0.85}}
+window.addEventListener("DOMContentLoaded", () => {
+  const {meta, strikes, series, prices, preview = false} = JSON.parse(document.getElementById("data").textContent);
+  const byId = id => document.getElementById(id);
+  if (typeof Plotly === "undefined") {
+    byId("availability").textContent = "Le graphique n’a pas chargé. Recharge la page pour réessayer.";
+    byId("camera-controls").hidden = true;
+    byId("gesture").hidden = true;
+    return;
+  }
+  const fmt = new Intl.NumberFormat("fr-FR", {maximumFractionDigits: 3});
+  const cash = new Intl.NumberFormat("fr-FR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const val = (number, suffix = "") => number == null ? "—" : fmt.format(number) + suffix;
+  const calendarDate = iso => iso ? iso.split("-").reverse().join("/") : "—";
+  const labels = {
+    native: "Natif",
+    early_flat_normal: "Prolongement court",
+    long_3m_from_6m: "Transfert 6M → 3M",
+    terminal_flat_normal: "Prolongement terminal"
   };
-}
-const buttons = [...document.querySelectorAll("[data-tenor]")];
-let tenor = "3M";
+  const config = {responsive: true, displaylogo: false, scrollZoom: false};
+  const chartFont = {family: "system-ui, sans-serif", color: "#30485e"};
+  const narrow = window.matchMedia("(max-width: 520px)");
+  const volPrecision = preview ? 1 : 3;
+  const graph = byId("surface");
+  let in3D = supportsWebGL();
 
-function addRow(table, values) {
-  const row = table.insertRow();
-  values.forEach((value, index) => {
-    const cell = row.insertCell();
-    cell.textContent = value;
-    if (table.id === "slice-points" && index === 1) cell.className = "numeric";
-  });
-}
+  function supportsWebGL() {
+    try {
+      return Boolean(document.createElement("canvas").getContext("webgl"));
+    } catch {
+      return false;
+    }
+  }
 
-function showSlice() {
-  const row = series[tenor][Number(byId("fixing").value)];
-  byId("coupon").textContent =
-    `Du ${calendarDate(row.start)} au ${calendarDate(row.end)} · Forward ${val(row.forward == null ? null : row.forward * 100, " %")}`;
-  const table = byId("slice-points");
-  table.replaceChildren();
-  strikes.forEach((strike, i) => addRow(table, [val(strike, " %"), val(row.vols[i]), labels[row.origins[i]] ?? "Indisponible"]));
-  byId("slice-errors").textContent = row.errors.join(" · ");
-  byId("slice-errors").hidden = row.errors.length === 0;
-  Plotly.react(byId("smile"), [{
-    type: "scatter", mode: "lines+markers", x: strikes, y: row.vols,
-    connectgaps: false, line: {color: "#096b62", width: 3},
-    hovertemplate: "Strike %{x:.2f} %<br>Vol %{y:.3f} bp<extra></extra>"
-  }], {
-    margin: {l: 55, r: 16, t: 16, b: 48}, font: chartFont,
-    xaxis: {title: {text: "Strike (%)"}}, yaxis: {title: {text: "Vol normale (bp)"}}
-  }, config);
-}
+  function updateControls() {
+    byId("camera-controls").hidden = !in3D;
+    byId("gesture").textContent = in3D
+      ? "Glisse pour tourner. Molette ou pincement pour zoomer."
+      : "Vue 2D. L’affichage 3D demande WebGL.";
+    graph.setAttribute("aria-label", in3D ? "Surface de volatilité interactive en trois dimensions" : "Carte de volatilité");
+  }
 
-function showTenor(index) {
-  tenor = index;
-  const rows = series[tenor];
-  const z = rows.map(row => row.vols);
-  const points = z.flat().filter(value => value !== null).length;
-  buttons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.tenor === tenor)));
-  byId("csv").href = `surface-${tenor}.csv`;
-  byId("csv").textContent = `CSV ${tenor}`;
-  byId("surface-title").textContent = `Volatilité normale · Euribor ${tenor}`;
-  byId("availability").textContent = `${fmt.format(points)} / ${fmt.format(rows.length * strikes.length)} points · ρ = ${val(meta.correlation_rho)}`;
-  byId("fixing").replaceChildren(...rows.map((row, i) =>
-    new Option(`${calendarDate(row.fixing)} · Début à ${val(row.time)} ans`, String(i))
-  ));
-  const firstMissing = rows.filter(row => row.errors.length);
-  const list = byId("issues");
-  list.replaceChildren(...firstMissing.map(row => {
-    const item = document.createElement("li");
-    item.textContent = `${calendarDate(row.fixing)} · ${row.errors.join(" · ")}`;
-    return item;
-  }));
-  list.hidden = firstMissing.length === 0;
+  function surfaceScene() {
+    const small = narrow.matches;
+    return {
+      dragmode: "orbit",
+      xaxis: {title: {text: "Strike (%)"}},
+      yaxis: {title: {text: small ? "Début (ans)" : "Début depuis spot (ans)"}, range: [0, 30]},
+      zaxis: {title: {text: small ? "Vol (bp)" : "Vol normale (bp)"}},
+      camera: {
+        eye: small ? {x: 2.1, y: -2.22, z: 1.12} : {x: 1.55, y: -1.65, z: 0.85},
+        center: {x: 0, y: 0, z: 0},
+        up: {x: 0, y: 0, z: 1}
+      }
+    };
+  }
+  const buttons = [...document.querySelectorAll("[data-tenor]")];
+  let tenor = "3M";
 
-  Plotly.react(byId("surface"), [{
-    type: "surface", x: strikes, y: rows.map(row => row.time), z, colorscale: "Viridis",
-    customdata: rows.map(row => strikes.map(() => calendarDate(row.fixing))),
-    connectgaps: false, colorbar: {title: {text: "Vol (bp)"}, len: 0.72},
-    hovertemplate: "Fixing %{customdata}<br>Début %{y:.2f} ans<br>Strike %{x:.2f} %<br>Vol %{z:.3f} bp<extra></extra>"
-  }], {
-    margin: {l: 0, r: 12, t: 8, b: 0}, font: chartFont, uirevision: tenor,
-    scene: surfaceScene()
-  }, config);
-  showSlice();
-}
+  function addRow(table, values) {
+    const row = table.insertRow();
+    values.forEach((value, index) => {
+      const cell = row.insertCell();
+      cell.textContent = value;
+      if (table.id === "slice-points" && index === 1) cell.className = "numeric";
+    });
+  }
 
-const indices = {"3M": "Euribor 3M", "6M": "Euribor 6M", "OIS": "€STR"};
-byId("market").textContent = `${calendarDate(meta.date_marche)} · ${meta.classeur}`;
-byId("validation").textContent = meta.validation_cotations_natives === "passed"
-  ? "Les contrôles de repricing des cotations natives sont dans les tolérances du moteur."
-  : "Le repricing des cotations natives dépasse certaines tolérances du moteur. Le détail figure dans Calibration.";
-Object.entries(meta.fixings).forEach(([key, row]) => addRow(byId("rates"), [
-  indices[key], val(row.taux_decimal == null ? null : row.taux_decimal * 100, " %"),
-  calendarDate(row.derniere_date)
-]));
-if (prices.length > 0) {
-  byId("pricing").hidden = false;
-  prices.forEach(row => addRow(byId("prices"), [
-    row.nom, row.erreur ?? cash.format(row.prix), row.coupons_prolonges ?? "—"
+  function showSlice() {
+    const row = series[tenor][Number(byId("fixing").value)];
+    const dates = `Du ${calendarDate(row.start)} au ${calendarDate(row.end)}`;
+    byId("coupon").textContent = preview
+      ? dates
+      : `${dates} · Forward ${val(row.forward == null ? null : row.forward * 100, " %")}`;
+    const table = byId("slice-points");
+    table.replaceChildren();
+    strikes.forEach((strike, i) => addRow(table, [val(strike, " %"), val(row.vols[i]), labels[row.origins[i]] ?? "Indisponible"]));
+    byId("slice-errors").textContent = row.errors.join(" · ");
+    byId("slice-errors").hidden = row.errors.length === 0;
+    Plotly.react(byId("smile"), [{
+      type: "scatter", mode: "lines+markers", x: strikes, y: row.vols,
+      connectgaps: false, line: {color: "#096b62", width: 3},
+      hovertemplate: `Strike %{x:.2f} %<br>Vol %{y:.${volPrecision}f} bp<extra></extra>`
+    }], {
+      margin: {l: 55, r: 16, t: 16, b: 48}, font: chartFont,
+      xaxis: {title: {text: "Strike (%)"}}, yaxis: {title: {text: "Vol normale (bp)"}}
+    }, config);
+  }
+
+  function showTenor(index) {
+    tenor = index;
+    const rows = series[tenor];
+    const z = rows.map(row => row.vols);
+    const points = z.flat().filter(value => value !== null).length;
+    buttons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.tenor === tenor)));
+    byId("csv").href = `surface-${tenor}.csv`;
+    byId("csv").textContent = `CSV ${tenor}`;
+    byId("surface-title").textContent = `Volatilité normale · Euribor ${tenor}`;
+    byId("availability").textContent = `${fmt.format(points)} / ${fmt.format(rows.length * strikes.length)} points · ρ = ${val(meta.correlation_rho)}`;
+    byId("fixing").replaceChildren(...rows.map((row, i) =>
+      new Option(`${calendarDate(row.fixing)} · Début à ${val(row.time)} ans`, String(i))
+    ));
+    const firstMissing = rows.filter(row => row.errors.length);
+    const list = byId("issues");
+    list.replaceChildren(...firstMissing.map(row => {
+      const item = document.createElement("li");
+      item.textContent = `${calendarDate(row.fixing)} · ${row.errors.join(" · ")}`;
+      return item;
+    }));
+    list.hidden = firstMissing.length === 0;
+
+    plotSurface(rows, z, index);
+    showSlice();
+  }
+
+  function plotSurface(rows, z, index) {
+    updateControls();
+    const small = narrow.matches;
+    const trace = {
+      type: in3D ? "surface" : "heatmap",
+      x: strikes, y: rows.map(row => row.time), z, colorscale: "Viridis",
+      customdata: rows.map(row => strikes.map(() => calendarDate(row.fixing))),
+      connectgaps: false,
+      colorbar: {title: {text: "Vol (bp)"}, len: 0.72, thickness: small ? 12 : 20},
+      hovertemplate: `Fixing %{customdata}<br>Début %{y:.2f} ans<br>Strike %{x:.2f} %<br>Vol %{z:.${volPrecision}f} bp<extra></extra>`
+    };
+    const layout = in3D
+      ? {margin: {l: 0, r: 12, t: 8, b: 0}, scene: surfaceScene()}
+      : {
+        margin: {l: 50, r: 15, t: 15, b: 50},
+        xaxis: {title: {text: "Strike (%)"}},
+        yaxis: {title: {text: "Début depuis spot (ans)"}, range: [0, 30]}
+      };
+    Plotly.react(graph, [trace], {...layout, font: chartFont, uirevision: index},
+      {...config, scrollZoom: in3D}).catch(() => {
+        if (index !== tenor) return;
+        if (trace.type === "surface") {
+          Plotly.purge(graph);
+          in3D = false;
+          plotSurface(rows, z, index);
+        } else {
+          byId("gesture").textContent = "Le graphique n’a pas pu s’afficher.";
+        }
+      });
+  }
+
+  function rotateSurface() {
+    const eye = graph.layout?.scene?.camera?.eye ?? surfaceScene().camera.eye;
+    const angle = Math.PI / 6;
+    Plotly.relayout(graph, {"scene.camera.eye": {
+      x: eye.x * Math.cos(angle) - eye.y * Math.sin(angle),
+      y: eye.x * Math.sin(angle) + eye.y * Math.cos(angle),
+      z: eye.z
+    }});
+  }
+
+
+  const indices = {"3M": "Euribor 3M", "6M": "Euribor 6M", "OIS": "€STR"};
+  const dateLabel = calendarDate(meta.date_marche);
+  byId("market").textContent = preview
+    ? `Rejeu du ${dateLabel} · V3 + candidat 3M`
+    : `${dateLabel} · ${meta.classeur}`;
+  byId("downloads").hidden = preview;
+  byId("observed-rates").hidden = preview;
+  byId("repo-links").hidden = !preview;
+  byId("approximation").hidden = !preview;
+  byId("validation").textContent = meta.validation_cotations_natives === "passed"
+    ? "Les contrôles de repricing des cotations natives sont dans les tolérances du moteur."
+    : "Le repricing des cotations natives dépasse certaines tolérances du moteur.";
+  Object.entries(meta.fixings ?? {}).forEach(([key, row]) => addRow(byId("rates"), [
+    indices[key], val(row.taux_decimal == null ? null : row.taux_decimal * 100, " %"),
+    calendarDate(row.derniere_date)
   ]));
-}
-buttons.forEach(button => button.addEventListener("click", () => showTenor(button.dataset.tenor)));
-byId("fixing").addEventListener("change", showSlice);
-showTenor(tenor);
-narrow.addEventListener("change", () => Plotly.relayout(byId("surface"), {scene: surfaceScene()}));
+  if (prices.length > 0) {
+    byId("pricing").hidden = false;
+    prices.forEach(row => addRow(byId("prices"), [
+      row.nom, row.erreur ?? cash.format(row.prix), row.coupons_prolonges ?? "—"
+    ]));
+  }
+  buttons.forEach(button => button.addEventListener("click", () => showTenor(button.dataset.tenor)));
+  byId("fixing").addEventListener("change", showSlice);
+  byId("rotate-view").addEventListener("click", rotateSurface);
+  byId("reset-view").addEventListener("click", () => Plotly.relayout(graph, {"scene.camera": surfaceScene().camera}));
+  showTenor(tenor);
+  narrow.addEventListener("change", () => {
+    if (in3D) Plotly.relayout(graph, {scene: surfaceScene()});
+  });
+});
 </script>
 </body>
 </html>

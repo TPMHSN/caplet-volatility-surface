@@ -6,7 +6,9 @@ from pathlib import Path
 from tempfile import mkdtemp
 
 
-ASSETS = Path(__file__).resolve().parent / "visuels"
+ROOT = Path(__file__).resolve().parent
+VIEWER_TEMPLATE = ROOT / "visuels" / "rapport.html"
+PLOTLY_JS = ROOT / "docs" / "vendor" / "plotly.min.js"
 
 
 def _write_json(path: Path, value) -> None:
@@ -93,10 +95,19 @@ def write_results(output: Path, metadata: dict, strikes: list[float], surfaces: 
         "series": views,
         "prices": price_view,
     }
-    data = json.dumps(payload, ensure_ascii=False, allow_nan=False).replace("<", "\\u003c")
-    template = (ASSETS / "rapport.html").read_text(encoding="utf-8")
-    plotly = (ASSETS / "plotly.min.js").read_text(encoding="utf-8").replace("</script", "<\\/script")
-    content = template.replace("__PLOTLY__", plotly, 1).replace("__RESULTATS__", data, 1)
     report = run / "rapport.html"
-    report.write_text(content, encoding="utf-8")
+    report.write_text(render_viewer(payload), encoding="utf-8")
     return report
+
+
+def render_viewer(payload: dict, *, public_preview: bool = False) -> str:
+    """Affiche le même graphique dans le rapport autonome et dans la démo publique."""
+    data = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+    data = data.replace("<", "\\u003c")
+    template = VIEWER_TEMPLATE.read_text(encoding="utf-8")
+    if public_preview:
+        plotly_script = '<script defer src="vendor/plotly.min.js"></script>'
+    else:
+        plotly = PLOTLY_JS.read_text(encoding="utf-8").replace("</script", "<\\/script")
+        plotly_script = f"<script>{plotly}</script>"
+    return template.replace("__PLOTLY_SCRIPT__", plotly_script, 1).replace("__RESULTATS__", data, 1)

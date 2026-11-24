@@ -2,6 +2,10 @@
 
 **V3 + candidat 3M · Euribor 3M et 6M · Pricing Bachelier**
 
+**[▶ Explorer les surfaces en 3D](https://tpmhsn.github.io/caplet-volatility-surface/)**
+
+Sélectionne Euribor 3M ou 6M, puis glisse sur le graphique pour le tourner. Le rejeu est accessible directement dans le navigateur.
+
 Une cotation de cap donne une volatilité pour un contrat qui contient plusieurs coupons. Pour valoriser un contrat à dates ou strikes différents, il faut retrouver la volatilité de chaque coupon. Ce projet part d’un classeur de marché et reconstruit les courbes, les forwards et la surface de volatilité que le pricer utilise ensuite coupon par coupon.
 
 ![Deux cartes de volatilité normale des caplets Euribor 3M et 6M, selon le début du coupon et le strike](docs/images/surfaces-30-ans.png)
