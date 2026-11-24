@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+.ipynb_checkpoints/
+
+# Inputs and generated results are local to each replay.
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+*.zip
+fixings/
+local/
+entrees/
+resultats/
+runs/

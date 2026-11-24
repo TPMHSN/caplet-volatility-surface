@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Surfaces de caplets à 30 ans</title>
+<style>
+  :root { color-scheme: light; --ink: #142739; --muted: #4b6074; --line: #d5e0e9; --brand: #096b62; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--ink); background: #f1f6f8; font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 1480px; padding: 38px clamp(18px, 4vw, 64px); margin: auto; }
+  h1, h2 { line-height: 1.2; letter-spacing: -.025em; margin: 0; }
+  h1 { font-size: clamp(28px, 5vw, 48px); }
+  h2 { font-size: 20px; }
+  p { margin: 0; }
+  a { color: var(--brand); text-underline-offset: 3px; }
+  .context { margin-top: 9px; color: var(--muted); }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 24px 0 16px; }
+  .tabs, .downloads { display: flex; gap: 8px; flex-wrap: wrap; }
+  .downloads { gap: 16px; }
+  button, select { border: 1px solid var(--line); background: white; color: var(--ink); border-radius: 8px; font: inherit; }
+  button { cursor: pointer; padding: 8px 14px; font-weight: 650; }
+  button[aria-pressed="true"] { color: white; background: var(--brand); border-color: var(--brand); }
+  select { display: block; width: min(100%, 450px); margin-top: 6px; padding: 7px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); align-items: start; gap: 16px; }
+  .card, details { padding: 20px; background: white; border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+  .smile-card h2, .rates h2 { margin-bottom: 12px; }
+  .metric, #coupon { margin-top: 8px; color: var(--muted); }
+  #surface { height: clamp(370px, 57vh, 610px); }
+  #smile { height: 265px; }
+  .rates, details { margin-top: 16px; }
+  #slice-errors { color: #97410a; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 7px 9px; border-bottom: 1px solid var(--line); text-align: left; }
+  th { color: var(--muted); font-weight: 650; }
+  .numeric { text-align: right; }
+  .slice-table { max-height: 206px; overflow: auto; }
+  .slice-table thead { position: sticky; top: 0; background: white; }
+  summary { cursor: pointer; font-weight: 650; }
+  details p, details ul { margin-top: 9px; }
+  @media (max-width: 980px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 490px) { .card, details { padding: 13px; } #surface { height: 360px; } }
+</style>
+<script>__PLOTLY__</script>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Surfaces de caplets à 30 ans</h1>
+    <p class="context" id="market"></p>
+  </header>
+  <div class="bar">
+    <div class="tabs" role="group" aria-label="Indice">
+      <button type="button" data-tenor="3M" aria-pressed="true">Euribor 3M</button>
+      <button type="button" data-tenor="6M" aria-pressed="false">Euribor 6M</button>
+    </div>
+    <nav class="downloads" aria-label="Fichiers du calcul">
+      <a id="csv" href="surface-3M.csv" download>CSV 3M</a>
+      <a href="surfaces.json" download>Données JSON</a>
+      <a href="calibration.json" download>Calibration</a>
+    </nav>
+  </div>
+  <div class="grid">
+    <section class="card">
+      <h2 id="surface-title">Volatilité normale</h2>
+      <p class="metric" id="availability" role="status"></p>
+      <div id="surface" aria-label="Surface de volatilité en trois dimensions"></div>
+    </section>
+    <section class="card smile-card">
+      <h2>Smile par fixing</h2>
+      <label for="fixing">Date du coupon</label>
+      <select id="fixing"></select>
+      <p id="coupon"></p>
+      <div id="smile" aria-label="Courbe de volatilité selon le strike"></div>
+      <div class="slice-table" tabindex="0" aria-label="Points du smile">
+        <table>
+          <thead><tr><th>Strike</th><th class="numeric">Vol (bp)</th><th>Provenance</th></tr></thead>
+          <tbody id="slice-points"></tbody>
+        </table>
+      </div>
+      <p id="slice-errors" hidden></p>
+    </section>
+  </div>
+  <section class="rates card">
+    <h2>Fixings observés</h2>
+    <table><thead><tr><th>Indice</th><th>Taux</th><th>Historique chargé jusqu’au</th></tr></thead>
+      <tbody id="rates"></tbody></table>
+  </section>
+  <section id="pricing" class="rates card" hidden>
+    <h2>Pricing caps et floors</h2>
+    <table><thead><tr><th>Contrat</th><th>Prime (€)</th><th>Coupons prolongés</th></tr></thead>
+      <tbody id="prices"></tbody></table>
+    <p class="context"><a href="pricing.json" download>Détail des prix et des coupons</a></p>
+  </section>
+  <details>
+    <summary>Calibration et couverture</summary>
+    <p id="validation"></p>
+    <p>Prolongement expérimental du moteur V3 + candidat 3M. Les cellules indisponibles restent vides.</p>
+    <ul id="issues" hidden></ul>
+  </details>
+</main>
+<script id="data" type="application/json">__RESULTATS__</script>
+<script>
+const {meta, strikes, series, prices} = JSON.parse(document.getElementById("data").textContent);
+const byId = id => document.getElementById(id);
+const fmt = new Intl.NumberFormat("fr-FR", {maximumFractionDigits: 3});
+const cash = new Intl.NumberFormat("fr-FR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const val = (number, suffix = "") => number == null ? "—" : fmt.format(number) + suffix;
+const calendarDate = iso => iso ? iso.split("-").reverse().join("/") : "—";
+const labels = {
+  native: "Natif",
+  early_flat_normal: "Prolongement court",
+  long_3m_from_6m: "Transfert 6M → 3M",
+  terminal_flat_normal: "Prolongement terminal"
+};
+const config = {responsive: true, displaylogo: false, scrollZoom: false};
+const chartFont = {family: "system-ui, sans-serif", color: "#30485e"};
+const narrow = window.matchMedia("(max-width: 520px)");
+
+function surfaceScene() {
+  const small = narrow.matches;
+  return {
+    xaxis: {title: {text: "Strike (%)"}},
+    yaxis: {title: {text: small ? "Début (ans)" : "Début depuis spot (ans)"}, range: [0, 30]},
+    zaxis: {title: {text: small ? "Vol (bp)" : "Vol normale (bp)"}},
+    camera: {eye: small ? {x: 2.1, y: -2.22, z: 1.12} : {x: 1.55, y: -1.65, z: 0.85}}
+  };
+}
+const buttons = [...document.querySelectorAll("[data-tenor]")];
+let tenor = "3M";
+
+function addRow(table, values) {
+  const row = table.insertRow();
+  values.forEach((value, index) => {
+    const cell = row.insertCell();
+    cell.textContent = value;
+    if (table.id === "slice-points" && index === 1) cell.className = "numeric";
+  });
+}
+
+function showSlice() {
+  const row = series[tenor][Number(byId("fixing").value)];
+  byId("coupon").textContent =
+    `Du ${calendarDate(row.start)} au ${calendarDate(row.end)} · Forward ${val(row.forward == null ? null : row.forward * 100, " %")}`;
+  const table = byId("slice-points");
+  table.replaceChildren();
+  strikes.forEach((strike, i) => addRow(table, [val(strike, " %"), val(row.vols[i]), labels[row.origins[i]] ?? "Indisponible"]));
+  byId("slice-errors").textContent = row.errors.join(" · ");
+  byId("slice-errors").hidden = row.errors.length === 0;
+  Plotly.react(byId("smile"), [{
+    type: "scatter", mode: "lines+markers", x: strikes, y: row.vols,
+    connectgaps: false, line: {color: "#096b62", width: 3},
+    hovertemplate: "Strike %{x:.2f} %<br>Vol %{y:.3f} bp<extra></extra>"
+  }], {
+    margin: {l: 55, r: 16, t: 16, b: 48}, font: chartFont,
+    xaxis: {title: {text: "Strike (%)"}}, yaxis: {title: {text: "Vol normale (bp)"}}
+  }, config);
+}
+
+function showTenor(index) {
+  tenor = index;
+  const rows = series[tenor];
+  const z = rows.map(row => row.vols);
+  const points = z.flat().filter(value => value !== null).length;
+  buttons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.tenor === tenor)));
+  byId("csv").href = `surface-${tenor}.csv`;
+  byId("csv").textContent = `CSV ${tenor}`;
+  byId("surface-title").textContent = `Volatilité normale · Euribor ${tenor}`;
+  byId("availability").textContent = `${fmt.format(points)} / ${fmt.format(rows.length * strikes.length)} points · ρ = ${val(meta.correlation_rho)}`;
+  byId("fixing").replaceChildren(...rows.map((row, i) =>
+    new Option(`${calendarDate(row.fixing)} · Début à ${val(row.time)} ans`, String(i))
+  ));
+  const firstMissing = rows.filter(row => row.errors.length);
+  const list = byId("issues");
+  list.replaceChildren(...firstMissing.map(row => {
+    const item = document.createElement("li");
+    item.textContent = `${calendarDate(row.fixing)} · ${row.errors.join(" · ")}`;
+    return item;
+  }));
+  list.hidden = firstMissing.length === 0;
+
+  Plotly.react(byId("surface"), [{
+    type: "surface", x: strikes, y: rows.map(row => row.time), z, colorscale: "Viridis",
+    customdata: rows.map(row => strikes.map(() => calendarDate(row.fixing))),
+    connectgaps: false, colorbar: {title: {text: "Vol (bp)"}, len: 0.72},
+    hovertemplate: "Fixing %{customdata}<br>Début %{y:.2f} ans<br>Strike %{x:.2f} %<br>Vol %{z:.3f} bp<extra></extra>"
+  }], {
+    margin: {l: 0, r: 12, t: 8, b: 0}, font: chartFont, uirevision: tenor,
+    scene: surfaceScene()
+  }, config);
+  showSlice();
+}
+
+const indices = {"3M": "Euribor 3M", "6M": "Euribor 6M", "OIS": "€STR"};
+byId("market").textContent = `${calendarDate(meta.date_marche)} · ${meta.classeur}`;
+byId("validation").textContent = meta.validation_cotations_natives === "passed"
+  ? "Les contrôles de repricing des cotations natives sont dans les tolérances du moteur."
+  : "Le repricing des cotations natives dépasse certaines tolérances du moteur. Le détail figure dans Calibration.";
+Object.entries(meta.fixings).forEach(([key, row]) => addRow(byId("rates"), [
+  indices[key], val(row.taux_decimal == null ? null : row.taux_decimal * 100, " %"),
+  calendarDate(row.derniere_date)
+]));
+if (prices.length > 0) {
+  byId("pricing").hidden = false;
+  prices.forEach(row => addRow(byId("prices"), [
+    row.nom, row.erreur ?? cash.format(row.prix), row.coupons_prolonges ?? "—"
+  ]));
+}
+buttons.forEach(button => button.addEventListener("click", () => showTenor(button.dataset.tenor)));
+byId("fixing").addEventListener("change", showSlice);
+showTenor(tenor);
+narrow.addEventListener("change", () => Plotly.relayout(byId("surface"), {scene: surfaceScene()}));
+</script>
+</body>
+</html>

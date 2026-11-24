@@ -1,0 +1,29 @@
+[
+  {
+    "nom": "Cap 3M spot 30 ans",
+    "product_type": "cap",
+    "index_tenor": "3M",
+    "notional": 10000000,
+    "effective_date": "2026-11-24",
+    "maturity_date": "2056-11-24",
+    "strike": 0.03
+  },
+  {
+    "nom": "Floor 3M spot 30 ans",
+    "product_type": "floor",
+    "index_tenor": "3M",
+    "notional": 10000000,
+    "effective_date": "2026-11-24",
+    "maturity_date": "2056-11-24",
+    "strike": 0.03
+  },
+  {
+    "nom": "Cap 6M spot 30 ans",
+    "product_type": "cap",
+    "index_tenor": "6M",
+    "notional": 10000000,
+    "effective_date": "2026-11-24",
+    "maturity_date": "2056-11-24",
+    "strike": 0.03
+  }
+]
