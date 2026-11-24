@@ -69,15 +69,20 @@ def _save(fig, path: Path):
     plt.close(fig)
 
 
+def _vol_limits(grids):
+    values = np.concatenate([grid[2].ravel() for grid in grids.values()])
+    level_min = np.floor(np.nanmin(values) / 10) * 10
+    level_max = np.ceil(np.nanmax(values) / 10) * 10
+    return level_min, level_max
+
+
 def surface_figure(surfaces, as_of: str, path: Path):
     fig, axes = plt.subplots(1, 2, figsize=(11.8, 5.15), sharex=True, sharey=True)
     fig.subplots_adjust(left=0.075, right=0.876, top=0.752, bottom=0.164, wspace=0.14)
     _heading(fig, "Volatilités normales des caplets EUR", f"Rejeu du {as_of}  ·  Volatilités en points de base")
     panel_names = {"3M": "Euribor 3M prolongé", "6M": "Euribor 6M V3"}
     grids = {tenor: _grid(result) for tenor, result in surfaces.items()}
-    values = np.concatenate([grid[2].ravel() for grid in grids.values()])
-    level_min = np.floor(np.nanmin(values) / 10) * 10
-    level_max = np.ceil(np.nanmax(values) / 10) * 10
+    level_min, level_max = _vol_limits(grids)
     image = None
     for ax, tenor in zip(axes, ("3M", "6M"), strict=True):
         years, strikes, vols, _ = grids[tenor]
@@ -104,6 +109,47 @@ def surface_figure(surfaces, as_of: str, path: Path):
     bar.set_label("Vol. normale (bp)", labelpad=10)
     bar.outline.set_visible(False)
     _save(fig, path)
+
+
+def surface_3d_figures(surfaces, as_of: str, destination: Path):
+    grids = {tenor: _grid(result) for tenor, result in surfaces.items()}
+    level_min, level_max = _vol_limits(grids)
+    names = {"3M": "Euribor 3M prolongé", "6M": "Euribor 6M V3"}
+    french = FuncFormatter(lambda value, _: f"{value:g}".replace(".", ","))
+    for tenor in ("3M", "6M"):
+        years, strikes, vols, _ = grids[tenor]
+        strike_mesh, year_mesh = np.meshgrid(strikes, years)
+
+        fig = plt.figure(figsize=(10.8, 6.4))
+        ax = fig.add_axes([0.115, 0.12, 0.70, 0.70], projection="3d")
+        ax.set_facecolor(PAGE)
+        _heading(
+            fig,
+            f"Surface 3D · {names[tenor]}",
+            f"Rejeu du {as_of}  ·  {len(years)} fixings × {len(strikes)} strikes",
+        )
+        plot = ax.plot_surface(
+            strike_mesh, year_mesh, vols, rcount=len(years), ccount=len(strikes),
+            cmap="viridis", vmin=level_min, vmax=level_max, linewidth=0, antialiased=False,
+        )
+        ax.set(
+            xlim=(strikes[0], strikes[-1]), ylim=(0, 30), zlim=(level_min, level_max),
+            xlabel="Strike (%)", ylabel="Début du coupon (ans)", zlabel="Vol. normale (bp)",
+        )
+        ax.set_xticks([strikes[0], 0, 1, 2, 3, strikes[-1]])
+        ax.set_yticks(np.arange(0, 31, 5))
+        ax.xaxis.set_major_formatter(french)
+        ax.tick_params(labelsize=10)
+        ax.view_init(elev=26, azim=-55)
+        ax.set_box_aspect((1.0, 1.30, 0.78), zoom=1.16)
+        for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+            axis.set_pane_color((1, 1, 1, 0.88))
+
+        cax = fig.add_axes([0.85, 0.25, 0.018, 0.46])
+        bar = fig.colorbar(plot, cax=cax)
+        bar.ax.set_title("bp", color=MUTED, fontsize=10, pad=8)
+        bar.outline.set_visible(False)
+        _save(fig, destination / f"surface-{tenor.lower()}-3d.png")
 
 
 def projection_figure(surfaces, as_of: str, path: Path):
@@ -164,6 +210,7 @@ def main():
     args.destination.mkdir(parents=True, exist_ok=True)
     with plt.rc_context(PLOT_STYLE):
         surface_figure(data, as_of, args.destination / "surfaces-30-ans.png")
+        surface_3d_figures(data, as_of, args.destination)
         projection_figure(data, as_of, args.destination / "forwards-et-smile.png")
         pricing_figure(prices, as_of, args.destination / "pricing-30-ans.png")
 

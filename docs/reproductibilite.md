@@ -1,6 +1,6 @@
 # Reproductibilité
 
-Les figures du README proviennent du rejeu du 20 novembre 2026. Pour les recréer, lancer le calcul avec le classeur et les historiques de cette date, en ajoutant `--pricing examples/pricing.json`.
+Les figures, dont les vues 3D de chaque indice, proviennent du rejeu du 20 novembre 2026. Pour les recréer, lancer le calcul avec le classeur et les historiques de cette date, en ajoutant `--pricing examples/pricing.json`.
 
 ```sh
 python -m pip install -r requirements-dev.txt

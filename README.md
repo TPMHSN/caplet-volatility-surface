@@ -4,7 +4,7 @@
 
 **[▶ Explorer les surfaces en 3D](https://tpmhsn.github.io/caplet-volatility-surface/)**
 
-Sélectionne Euribor 3M ou 6M, puis glisse sur le graphique pour le tourner. Retrouve aussi les trois graphiques dans la [galerie des visuels](visuels/).
+Sélectionne Euribor 3M ou 6M, puis glisse sur le graphique pour le tourner. Retrouve les deux vues 3D et les graphiques de l’exemple dans la [galerie des visuels](visuels/).
 
 Une cotation de cap donne une volatilité pour un contrat qui contient plusieurs coupons. Pour valoriser un contrat à dates ou strikes différents, il faut retrouver la volatilité de chaque coupon. Ce projet part d’un classeur de marché et reconstruit les courbes, les forwards et la surface de volatilité que le pricer utilise ensuite coupon par coupon.
 
